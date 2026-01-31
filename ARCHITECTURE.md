@@ -53,19 +53,81 @@ The core voice cloning logic is implemented using a Convolutional Neural Network
 
 ## Data Flow Diagram
 
+This diagram illustrates the three main workflows supported by the project: the Custom CNN pipeline, the RVC workflow, and the So-VITS-SVC path.
+
 ```mermaid
 graph TD
-    A[User Microphone] -->|record_audio.py| B(Raw .wav Files)
-    B -->|preprocess_audio.py| C{Preprocessing}
-    C -->|Noise Reduction| D(Cleaned Audio / Tensors)
-    D -->|train_model.py| E[CNN Model Training]
-    E -->|Save Weights| F[(model.pth)]
+    %% Global Inputs
+    UserAudio[User Microphone/Audio Files] -->|Input| DataIngest
     
-    G[Input Text] -->|synthesize_voice.py| H[Text-to-Spectrogram]
-    H --> I[Loaded Model]
-    F --> I
-    I --> J[Audio Synthesis]
-    J --> K[Output .wav]
+    subgraph DataIngest [Data Acquisition & Storage]
+        direction TB
+        RawWav[Raw .wav Files]
+        RawMP4[Raw .mp4 Video]
+        RawMP4 -->|Extract Audio| RawWav
+    end
+    
+    UserAudio --> RawWav
+    UserAudio --> RawMP4
+
+    %% Path 1: Custom Python Scripts
+    subgraph CustomPipeline [Custom CNN Pipeline]
+        direction TB
+        ScriptRecord[scripts/record_audio.py]
+        ScriptPreprocess[scripts/preprocess_audio.py]
+        ScriptTrain[scripts/train_model.py]
+        ScriptSynth[scripts/synthesize_voice.py]
+        CustomModel[(Custom CNN Model .pth)]
+        
+        RawWav --> ScriptPreprocess
+        ScriptPreprocess -->|Cleaned Audio/Tensors| ScriptTrain
+        ScriptTrain -->|Train| CustomModel
+        
+        InputText[Input Text] --> ScriptSynth
+        CustomModel --> ScriptSynth
+        ScriptSynth --> OutputCustom[Custom Synthesis .wav]
+    end
+
+    %% Path 2: RVC Workflow
+    subgraph RVCPipeline [RVC Workflow]
+        direction TB
+        RVCNotebook[RVC Model Training & Inference.ipynb]
+        RVCData[RVC/ab, RVC/pc, RVC/vk]
+        RVCModel[(RVC Model .pth)]
+        RVCIndex[(Feature Index .index)]
+        
+        RawWav -->|Copy to| RVCData
+        RVCData --> RVCNotebook
+        RVCNotebook -->|Train| RVCModel
+        RVCNotebook -->|Generate| RVCIndex
+        
+        InputVocals[Source Vocals] --> RVCNotebook
+        RVCModel --> RVCNotebook
+        RVCIndex --> RVCNotebook
+        RVCNotebook --> OutputRVC[RVC Output .wav]
+    end
+
+    %% Path 3: So-VITS-SVC
+    subgraph SoVitsPipeline [So-VITS-SVC Workflow]
+        direction TB
+        SVCRaw[so-vits-svc/dataset_raw]
+        SVCPre[Preprocessing]
+        SVCTrain[Training]
+        SVCModel[(So-VITS Model .pth)]
+        SVCInfer[Inference]
+        
+        RawWav -->|Copy to| SVCRaw
+        SVCRaw --> SVCPre
+        SVCPre --> SVCTrain
+        SVCTrain --> SVCModel
+        
+        InputSource[Source Audio] --> SVCInfer
+        SVCModel --> SVCInfer
+        SVCInfer --> OutputSVC[So-VITS Output .wav]
+    end
+
+    %% Legend / Connections
+    ScriptRecord --> RawWav
 ```
 
 ## Dependencies & Tech Stack
